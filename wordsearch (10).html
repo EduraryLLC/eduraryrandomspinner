@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Weighted Spinner Wheel</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for the spinner's aesthetics */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+            transition: background-color 0.3s ease;
+        }
+
+        /* Canvas container to hold the wheel and ensure centering */
+        #wheelContainer {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            max-width: 500px;
+            width: 100%;
+            aspect-ratio: 1 / 1; /* Keep it square */
+            margin-bottom: 24px;
+        }
+
+        #wheelCanvas {
+            border-radius: 9999px; /* Fully rounded */
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            height: 100%;
+        }
+
+        /* The pointer/indicator - AT THE BOTTOM (6 o'clock) */
+        #pointer {
+            position: absolute;
+            bottom: 0; 
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-bottom: 30px solid #ef4444; 
+            z-index: 10;
+        }
+
+        /* Result Box styling */
+        #resultBox {
+            min-height: 56px;
+        }
+
+        /* Styling for the dynamic item list */
+        .item-row {
+            display: grid;
+            grid-template-columns: 3fr 1fr 40px;
+            gap: 8px;
+            align-items: center;
+            padding: 4px 0;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <!-- Main Application Container (Visible immediately) -->
+    <div id="appContainer" class="w-full max-w-6xl bg-white p-6 md:p-10 rounded-xl shadow-2xl border border-gray-100">
+
+        <h1 class="text-3xl font-bold text-gray-800 mb-2 text-center">Random Weighted Spinner Wheel</h1>
+        <p class="text-center text-gray-500 mb-8">Customize item chances and keep track of your winners!</p>
+
+        <!-- Theme Selector -->
+        <div class="mb-6 flex justify-center items-center gap-4">
+            <label for="themeSelector" class="font-medium text-gray-700">Select Theme:</label>
+            <select id="themeSelector" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+                <option value="carnival">Carnival (Classic)</option>
+                <option value="christmas">Christmas (Red/Green)</option>
+                <option value="autumn">Autumn Harvest (Orange/Brown)</option>
+                <option value="school">Back to School (Blue/Yellow)</option>
+            </select>
+        </div>
+
+        <!-- Main Content Area: Wheel and Controls -->
+        <div class="flex flex-col lg:flex-row gap-8">
+
+            <!-- Left Panel: Wheel Area and History -->
+            <div class="lg:w-1/2 flex flex-col items-center">
+                <div id="wheelContainer">
+                    <canvas id="wheelCanvas" width="500" height="500"></canvas>
+                    <div id="pointer"></div>
+                </div>
+
+                <!-- Spin Button and Result -->
+                <button id="spinButton"
+                        class="w-full max-w-xs bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg transition duration-150 ease-in-out shadow-lg transform hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-lg">
+                    Spin the Wheel!
+                </button>
+
+                <!-- Result Message -->
+                <div class="mt-8 w-full max-w-xs text-center">
+                    <p class="text-lg font-semibold text-gray-600 mb-2">Winner:</p>
+                    <div id="resultBox" class="bg-indigo-50 text-indigo-700 font-extrabold text-2xl p-3 rounded-lg shadow-inner flex items-center justify-center transition duration-300">
+                        Ready to Spin
+                    </div>
+                </div>
+
+                <!-- Alert/Error Message Box -->
+                <div id="messageBox" class="mt-4 w-full max-w-xs p-3 bg-red-100 text-red-700 rounded-lg hidden"></div>
+
+                <!-- Winner History Log -->
+                <div class="mt-10 w-full p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-inner">
+                    <h2 class="text-xl font-bold text-gray-700 mb-3 border-b pb-2 flex justify-between items-center">
+                        Your Spin History
+                        <span class="text-sm font-normal text-gray-500">User ID: <span id="userIdDisplay">Loading...</span></span>
+                    </h2>
+                    <div id="winnerHistory" class="space-y-2 max-h-48 overflow-y-auto">
+                        <p class="text-gray-500 italic">History will load after authentication...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Input and Probability -->
+            <div class="lg:w-1/2">
+                <h2 class="text-xl font-bold text-gray-700 mb-4">Item List & Weights (Auto-Saved)</h2>
+                <div class="flex flex-col gap-4">
+                    <div class="flex justify-between items-center text-sm font-medium text-gray-700">
+                        <span class="w-3/5">Item Name</span>
+                        <span class="w-1/5 text-center">Chance (Weight)</span>
+                        <span class="w-1/5 text-right pr-2">Probability</span>
+                    </div>
+
+                    <!-- Dynamic Input Area -->
+                    <div id="inputListContainer" class="space-y-1 max-h-[200px] overflow-y-auto p-1 border border-gray-300 rounded-lg bg-white shadow-sm">
+                        <!-- Items will be inserted here by JS -->
+                    </div>
+
+                    <button id="addItemButton" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-150 ease-in-out shadow-md">
+                        + Add New Item
+                    </button>
+                </div>
+                
+                <p class="text-sm text-gray-500 mt-4 italic">
+                    <strong class="font-bold">Tip:</strong> The wheel and list are updated immediately upon changes.
+                </p>
+
+                <!-- Bulk Input Area -->
+                <div class="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h3 class="font-bold text-gray-700 mb-2">Bulk List Editor (Copy/Paste)</h3>
+                    <textarea id="bulkInput" rows="4" placeholder="Enter one item per line, or use 'Item:Weight' format (e.g., Pizza:3)"
+                        class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"></textarea>
+                    <button id="loadListButton" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-150 ease-in-out shadow-md mt-2">
+                        Load List from Text
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // --- Firebase Imports & Setup ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, getDoc, query, limit, onSnapshot, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // setLogLevel('debug'); // Uncomment for detailed Firebase logging
+
+        // Firebase Globals (Provided by the environment)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, db, auth;
+        let userId = null;
+        let isAuthReady = false;
+        let winnersCollectionRef = null; 
+        let itemDocRef = null;
+
+        // --- Configuration & Initialization ---
+
+        const canvas = document.getElementById('wheelCanvas');
+        const ctx = canvas.getContext('2d');
+        const inputListContainer = document.getElementById('inputListContainer');
+        const spinButton = document.getElementById('spinButton');
+        const resultBox = document.getElementById('resultBox');
+        const messageBox = document.getElementById('messageBox');
+        const addItemButton = document.getElementById('addItemButton');
+        const themeSelector = document.getElementById('themeSelector');
+        const winnerHistoryDiv = document.getElementById('winnerHistory');
+        const userIdDisplay = document.getElementById('userIdDisplay');
+        const bulkInput = document.getElementById('bulkInput');
+        const loadListButton = document.getElementById('loadListButton');
+        // Removed loadingScreen variable
+
+        // CONSTANTS
+        const MAX_ITEMS = 50;
+        const totalSpins = 10; // Number of full spins the wheel will make
+
+        // Data State
+        let items = [
+            { id: crypto.randomUUID(), name: "Topic A", weight: 3 },
+            { id: crypto.randomUUID(), name: "Topic B", weight: 1 },
+            { id: crypto.randomUUID(), name: "Topic C", weight: 2 },
+            { id: crypto.randomUUID(), name: "Topic D", weight: 1 },
+        ];
+        let spinAngle = 0; 
+        let isSpinning = false;
+        
+        // Theming Presets
+        const themes = {
+            carnival: {
+                name: "Carnival (Classic)",
+                colors: ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#34d399', '#fcd34d', '#f87171', '#8b5cf6', '#22d3ee'],
+                bg: '#f7f9fb'
+            },
+            christmas: {
+                name: "Christmas (Red/Green)",
+                colors: ['#dc2626', '#059669', '#b91c1c', '#10b981', '#ef4444', '#34d399'], // Red and Green
+                bg: '#e5e7eb'
+            },
+            autumn: {
+                name: "Autumn Harvest (Orange/Brown)",
+                colors: ['#ea580c', '#b45309', '#9a3412', '#d97706', '#fb923c', '#ca8a04'], // Warm Oranges, Reds, Browns
+                bg: '#fff7ed'
+            },
+            school: {
+                name: "Back to School (Blue/Yellow)",
+                colors: ['#2563eb', '#facc15', '#1d4ed8', '#eab308', '#3b82f6', '#fde047'], // Blues and Yellows
+                bg: '#ffffff'
+            }
+        };
+        let currentTheme = themes.carnival;
+
+        // --- Firebase Core Functions ---
+
+        async function initFirebase() {
+            if (!firebaseConfig) {
+                console.error("Firebase config not found.");
+                renderItems(); // Render default data immediately
+                return;
+            }
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                console.log("Firebase App Initialized. Waiting for authentication...");
+
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                }
+
+                // 1. Handle Authentication (Crucial for permissions)
+                onAuthStateChanged(auth, async (user) => {
+                    if (!user) {
+                        // Sign in anonymously if sign-in with token failed or token was null
+                        await signInAnonymously(auth);
+                        user = auth.currentUser; 
+                    }
+                    
+                    if (user) {
+                        // Use try...finally to ensure renderItems runs regardless of data load success
+                        try {
+                            userId = user.uid;
+                            userIdDisplay.textContent = userId;
+                            isAuthReady = true;
+                            console.log('Auth state changed. User ID:', userId);
+
+                            // 2. Set up Firestore References (PRIVATE Paths)
+                            const privatePath = `artifacts/${appId}/users/${userId}`;
+                            winnersCollectionRef = collection(db, `${privatePath}/winnerHistory`);
+                            itemDocRef = doc(db, `${privatePath}/config/wheelData`);
+                            console.log('Firestore private collection refs set.');
+
+
+                            // 3. Load Persistent Data (MUST wait for auth)
+                            await loadItems();
+                            
+                            // 4. Load Winners History (MUST wait for auth)
+                            loadWinners();
+                            
+                        } catch(dataError) {
+                            console.error("Error during data loading or rendering:", dataError);
+                            showMessage("Failed to load saved data. Using default list.", 'error');
+                        } finally {
+                            // 5. Initial UI Render (Runs whether data loaded or failed)
+                            renderItems();
+                        }
+                        
+                    } else {
+                        console.error("Failed to establish user authentication.");
+                        userIdDisplay.textContent = "Auth Error";
+                        showMessage("Authentication failed. Data saving/loading disabled.", 'error');
+                        
+                        // Fallback to render with default data 
+                        renderItems();
+                    }
+                });
+
+            } catch (error) {
+                console.error("Error initializing Firebase:", error);
+                showMessage("Failed to connect to Firebase services. Check console.", 'error');
+                // Ensure UI is visible even if init fails
+                renderItems();
+            }
+        }
+
+        /**
+         * Saves the current item list to Firestore.
+         */
+        async function saveItems() {
+            // CRITICAL GUARD: Check for authenticated user before attempting write
+            if (!auth.currentUser || !itemDocRef) {
+                console.warn("saveItems skipped: User not authenticated or itemDocRef not set.");
+                return;
+            }
+
+            // Clean data structure for storage
+            const dataToSave = items.map(item => ({ name: item.name, weight: parseInt(item.weight) }));
+
+            try {
+                await setDoc(itemDocRef, {
+                    items: dataToSave,
+                    lastUpdated: new Date()
+                });
+                console.log("Item list saved successfully.");
+            } catch (error) {
+                console.error("Error saving item list:", error);
+            }
+        }
+
+        /**
+         * Loads the persistent item list from Firestore.
+         */
+        async function loadItems() {
+             // CRITICAL GUARD: Check for authenticated user before attempting read
+            if (!auth.currentUser || !itemDocRef) {
+                console.warn("loadItems skipped: User not authenticated or itemDocRef not set.");
+                return;
+            }
+
+            try {
+                const docSnap = await getDoc(itemDocRef);
+                
+                if (docSnap.exists() && docSnap.data().items && docSnap.data().items.length > 0) {
+                    const loadedItems = docSnap.data().items;
+                    // Map the loaded simple objects back to the internal structure with UUIDs
+                    items = loadedItems.map(item => ({
+                        id: crypto.randomUUID(), 
+                        name: item.name, 
+                        weight: Math.max(1, parseInt(item.weight) || 1) // Ensure weight is >= 1
+                    }));
+                    showMessage(`Loaded ${items.length} items from your last session.`, 'success');
+                } else {
+                    console.log("No previous item list found, using default.");
+                }
+            } catch (error) {
+                console.error("Error loading item list:", error);
+                // We don't show an error box here as the default list will load
+            }
+        }
+
+
+        /**
+         * Loads and subscribes to the winner history.
+         */
+        function loadWinners() {
+            // CRITICAL GUARD: Check for authenticated user before running snapshot listener
+            if (!auth.currentUser || !winnersCollectionRef) {
+                console.warn("loadWinners skipped: User not authenticated or collection ref missing.");
+                return;
+            }
+
+            console.log("Attempting to subscribe to winners history...");
+
+            const q = query(winnersCollectionRef, limit(10));
+
+            onSnapshot(q, (snapshot) => {
+                winnerHistoryDiv.innerHTML = '';
+                if (snapshot.empty) {
+                    winnerHistoryDiv.innerHTML = '<p class="text-gray-500 italic">No winners yet! Spin the wheel!</p>';
+                    return;
+                }
+
+                // Collect data and sort client-side (to avoid requiring server-side indexes)
+                const winners = [];
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (data.timestamp) {
+                        winners.push(data);
+                    }
+                });
+
+                // Sort by timestamp in memory (descending)
+                winners.sort((a, b) => b.timestamp.toDate().getTime() - a.timestamp.toDate().getTime());
+
+
+                winners.forEach(winnerData => {
+                    const date = winnerData.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    
+                    const historyItem = document.createElement('div');
+                    historyItem.className = 'flex justify-between text-sm text-gray-800 p-2 bg-white rounded-md shadow-xs';
+                    historyItem.innerHTML = `
+                        <span class="font-semibold text-indigo-600">${winnerData.name}</span>
+                        <span class="text-xs text-gray-500">${date}</span>
+                    `;
+                    winnerHistoryDiv.appendChild(historyItem);
+                });
+            }, (error) => {
+                console.error("Error loading winners:", error);
+                winnerHistoryDiv.innerHTML = '<p class="text-red-500 italic">Error loading history. Permissions issue detected.</p>';
+            });
+        }
+
+        /**
+         * Saves the winning item to Firestore.
+         * @param {string} winnerName 
+         */
+        async function saveWinner(winnerName) {
+            // CRITICAL GUARD: Check for authenticated user before attempting write
+            if (!auth.currentUser || !winnersCollectionRef) {
+                console.warn("saveWinner skipped: User not authenticated or collection not set.");
+                return;
+            }
+            try {
+                await addDoc(winnersCollectionRef, {
+                    name: winnerName,
+                    timestamp: new Date(),
+                    userId: userId 
+                });
+            } catch (error) {
+                console.error("Error saving winner:", error);
+            }
+        }
+
+
+        // --- UI & Logic Functions ---
+
+        /**
+         * Displays a temporary message in the dedicated box.
+         * @param {string} message The message to display.
+         * @param {string} type 'error' or 'success'
+         */
+        function showMessage(message, type = 'error') {
+            if (message) {
+                messageBox.textContent = message;
+                messageBox.classList.remove('hidden', 'bg-red-100', 'bg-green-100', 'text-red-700', 'text-green-700');
+                if (type === 'error') {
+                    messageBox.classList.add('bg-red-100', 'text-red-700');
+                    messageBox.classList.remove('bg-green-100', 'text-green-700');
+                } else {
+                    messageBox.classList.add('bg-green-100', 'text-green-700');
+                    messageBox.classList.remove('bg-red-100', 'text-red-700');
+                }
+            } else {
+                messageBox.classList.add('hidden');
+            }
+        }
+
+        /**
+         * Generates the HTML for a single item row.
+         * @param {object} item { id, name, weight }
+         * @returns {string} HTML string
+         */
+        function createItemRowHtml(item, probability) {
+            return `
+                <div class="item-row bg-gray-50 p-1 rounded border border-gray-100" data-id="${item.id}">
+                    <input type="text" value="${item.name}" 
+                        oninput="handleItemUpdate(event)" data-field="name" data-id="${item.id}"
+                        class="w-full p-1 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500">
+                    
+                    <input type="number" min="1" value="${item.weight}" 
+                        oninput="handleItemUpdate(event)" data-field="weight" data-id="${item.id}"
+                        class="w-full p-1 border border-gray-300 rounded text-sm text-center focus:ring-blue-500 focus:border-blue-500">
+                    
+                    <span class="text-xs text-gray-600 text-right pr-2 font-mono">${probability}</span>
+                    
+                    <button onclick="deleteItem('${item.id}')"
+                        class="text-red-500 hover:text-red-700 p-1 rounded transition duration-150">
+                        <!-- Icon: X -->
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            `;
+        }
+
+        /**
+         * Renders the current items list and updates probabilities.
+         */
+        function renderItems() {
+            if (items.length === 0) {
+                inputListContainer.innerHTML = '<p class="text-gray-500 italic p-3 text-center">Add items to begin.</p>';
+                spinButton.disabled = true;
+                saveItems();
+                return;
+            }
+
+            const totalWeight = items.reduce((sum, item) => sum + parseInt(item.weight), 0);
+            let html = '';
+
+            items.forEach(item => {
+                const weight = parseInt(item.weight);
+                const probability = totalWeight > 0 ? ((weight / totalWeight) * 100).toFixed(1) + '%' : '0.0%';
+                html += createItemRowHtml(item, probability);
+            });
+
+            inputListContainer.innerHTML = html;
+            drawWheel();
+            spinButton.disabled = isSpinning;
+            saveItems(); // Save changes after every successful render/update
+        }
+
+        // Expose global handler for inline event listeners
+        window.handleItemUpdate = (event) => {
+            const id = event.target.dataset.id;
+            const field = event.target.dataset.field;
+            let value = event.target.value;
+
+            const itemIndex = items.findIndex(item => item.id === id);
+            if (itemIndex > -1) {
+                if (field === 'weight') {
+                    // Ensure weight is a positive integer
+                    value = Math.max(1, parseInt(value) || 1);
+                    event.target.value = value; // Update the input field visually
+                }
+                items[itemIndex][field] = value;
+                // Re-render and save on any change
+                renderItems(); 
+            }
+        };
+        
+        // Expose global handler for inline event listeners
+        window.deleteItem = (id) => {
+            items = items.filter(item => item.id !== id);
+            renderItems(); // This also triggers saveItems
+            showMessage(`Item deleted. List saved.`, 'success');
+        };
+
+        /**
+         * Adds a new item to the list with a default weight of 1.
+         */
+        function addNewItem() {
+            if (items.length >= MAX_ITEMS) {
+                showMessage(`Maximum of ${MAX_ITEMS} items reached.`, 'error');
+                return;
+            }
+            items.push({
+                id: crypto.randomUUID(),
+                name: `New Item ${items.length + 1}`,
+                weight: 1
+            });
+            renderItems(); // This also triggers saveItems
+        }
+        
+        /**
+         * Parses text input from the bulk editor and updates the item list.
+         */
+        function loadItemsFromText() {
+            const text = bulkInput.value.trim();
+            if (!text) {
+                showMessage("Bulk editor is empty.", 'error');
+                return;
+            }
+
+            const lines = text.split('\n').filter(line => line.trim() !== '');
+            const newItems = [];
+
+            lines.forEach(line => {
+                const trimmedLine = line.trim();
+                let name = trimmedLine;
+                let weight = 1;
+
+                if (trimmedLine.includes(':')) {
+                    const parts = trimmedLine.split(':');
+                    name = parts[0].trim();
+                    const parsedWeight = parseInt(parts[1].trim());
+                    weight = Math.max(1, isNaN(parsedWeight) ? 1 : parsedWeight);
+                }
+
+                if (name) {
+                    newItems.push({
+                        id: crypto.randomUUID(),
+                        name: name,
+                        weight: weight
+                    });
+                }
+            });
+
+            if (newItems.length > 0) {
+                items = newItems.slice(0, MAX_ITEMS);
+                renderItems(); // This also triggers saveItems
+                showMessage(`Successfully loaded ${items.length} items from text.`, 'success');
+            } else {
+                showMessage("Could not parse any valid items from the text.", 'error');
+            }
+        }
+
+
+        /**
+         * Switches the theme based on the user selection.
+         */
+        function switchTheme(themeKey) {
+            currentTheme = themes[themeKey] || themes.carnival;
+            document.body.style.backgroundColor = currentTheme.bg;
+            drawWheel();
+        }
+
+
+        /**
+         * Draws the spinning wheel segments and text on the canvas.
+         */
+        function drawWheel() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(centerX, centerY) * 0.95; 
+
+            if (items.length === 0) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#e5e7eb';
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.fillStyle = '#6b7280';
+                ctx.font = "24px Inter";
+                ctx.textAlign = "center";
+                ctx.fillText("Add Items Above", centerX, centerY);
+                return;
+            }
+
+            const totalWeight = items.reduce((sum, item) => sum + parseInt(item.weight), 0);
+            if (totalWeight === 0) return; 
+
+            // Calculate angles based on weight
+            let currentAngle = 0; 
+            const colors = currentTheme.colors;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate(spinAngle); 
+
+            // Draw segments
+            items.forEach((item, i) => {
+                const weight = parseInt(item.weight);
+                const segmentFraction = weight / totalWeight;
+                const segmentAngle = segmentFraction * (2 * Math.PI);
+                const endAngle = currentAngle + segmentAngle;
+
+                // Draw the segment
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.arc(0, 0, radius, currentAngle, endAngle);
+                ctx.closePath();
+                ctx.fillStyle = colors[i % colors.length];
+                ctx.fill();
+
+                // Draw segment borders
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Draw text (rotated)
+                ctx.save();
+                // Position the text in the middle of the segment
+                const textAngle = currentAngle + segmentAngle / 2;
+                ctx.rotate(textAngle);
+                ctx.fillStyle = 'white';
+                
+                const maxSegmentRatio = segmentFraction * 8; 
+                const fontSize = Math.min(20, Math.max(10, 16 * maxSegmentRatio)); 
+                
+                ctx.font = `${fontSize}px Inter, sans-serif`;
+                ctx.textAlign = "right";
+                ctx.textBaseline = "middle";
+
+                const textX = radius * 0.85;
+                const maxTextWidth = radius * 0.5; 
+                let displayedText = item.name;
+
+                if (ctx.measureText(item.name).width > maxTextWidth) {
+                    let tempText = '';
+                    for (const char of item.name) {
+                        const newText = tempText + char;
+                        if (ctx.measureText(newText + '...').width < maxTextWidth) {
+                            tempText = newText;
+                        } else {
+                            break;
+                        }
+                    }
+                    displayedText = tempText.trim() + '...';
+                }
+
+                ctx.fillText(displayedText, textX, 0);
+                ctx.restore();
+
+                currentAngle = endAngle; // Prepare for the next segment
+            });
+
+            // Draw the center circle (hub)
+            ctx.beginPath();
+            ctx.arc(0, 0, radius * 0.1, 0, 2 * Math.PI);
+            ctx.fillStyle = '#374151'; 
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            ctx.restore();
+        }
+        
+        /**
+         * Uses the weighted probability to select a winner.
+         * @returns {object} The winning item object { id, name, weight }
+         */
+        function selectWeightedWinner() {
+            const totalWeight = items.reduce((sum, item) => sum + parseInt(item.weight), 0);
+            if (totalWeight === 0) return null;
+
+            let random = Math.random() * totalWeight;
+
+            let cumulativeWeight = 0;
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                const weight = parseInt(item.weight);
+                cumulativeWeight += weight;
+                if (random <= cumulativeWeight) {
+                    // Return the item object and its index in the array
+                    return { item, index: i };
+                }
+            }
+            // Fallback (should not be necessary with correct logic)
+            return { item: items[items.length - 1], index: items.length - 1 };
+        }
+
+
+        /**
+         * Calculates the final stop angle and starts the spin animation.
+         */
+        function spinWheel() {
+            if (isSpinning || items.length === 0) {
+                if (items.length === 0) {
+                    showMessage(`Please add items to the list.`, 'error');
+                }
+                return;
+            }
+
+            const totalWeight = items.reduce((sum, item) => sum + parseInt(item.weight), 0);
+            if (totalWeight === 0) {
+                showMessage(`Please ensure at least one item has a chance (weight) of 1 or more.`, 'error');
+                return;
+            }
+
+            isSpinning = true;
+            spinButton.disabled = true;
+            resultBox.textContent = 'Spinning...';
+            showMessage('');
+
+            const { item: winningItem, index: winningIndex } = selectWeightedWinner();
+
+            let currentStopAngle = 0;
+            let winningSegmentStartAngle = 0;
+            
+            // 1. Find the angular position of the winning segment
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                const weight = parseInt(item.weight);
+                const segmentFraction = weight / totalWeight;
+                const segmentAngle = segmentFraction * (2 * Math.PI);
+
+                if (i === winningIndex) {
+                    winningSegmentStartAngle = currentStopAngle;
+                    break;
+                }
+                currentStopAngle += segmentAngle;
+            }
+
+            // Angle of the middle of the winning segment (M, relative to 3 o'clock)
+            const winningSegmentEndAngle = currentStopAngle + (parseInt(winningItem.weight) / totalWeight) * (2 * Math.PI);
+            const targetSegmentMidAngle = winningSegmentStartAngle + (winningSegmentEndAngle - winningSegmentStartAngle) / 2;
+
+            // Target pointer position (P) is 12 o'clock (PI / 2 radians) to align with 6 o'clock pointer
+            const pointerTargetAngle = Math.PI / 2; 
+
+            // Calculate the required clockwise rotation to move M to P
+            let rawOffset = pointerTargetAngle - targetSegmentMidAngle;
+            let stopOffset = (rawOffset % (2 * Math.PI) + (2 * Math.PI)) % (2 * Math.PI);
+
+            // Calculate the total required rotation angle (Full Spins + Stop Offset)
+            const fullRotation = totalSpins * 2 * Math.PI;
+            const totalTargetAngle = fullRotation + stopOffset; 
+
+            // Start the animation loop
+            const startTime = Date.now();
+            const spinDuration = 5000;
+
+            function animateSpin() {
+                const elapsedTime = Date.now() - startTime;
+                const progress = Math.min(elapsedTime / spinDuration, 1);
+
+                const easedProgress = 1 - Math.pow(1 - progress, 3); // Cubic ease out
+
+                spinAngle = totalTargetAngle * easedProgress;
+
+                drawWheel();
+
+                if (progress < 1) {
+                    requestAnimationFrame(animateSpin);
+                } else {
+                    // Animation finished
+                    isSpinning = false;
+                    spinButton.disabled = false;
+                    
+                    const winner = winningItem.name;
+                    
+                    resultBox.textContent = winner;
+                    resultBox.classList.add('bg-yellow-100', 'text-yellow-800', 'shadow-xl');
+                    setTimeout(() => {
+                        resultBox.classList.remove('bg-yellow-100', 'text-yellow-800', 'shadow-xl');
+                        resultBox.classList.add('bg-indigo-50', 'text-indigo-700', 'shadow-inner');
+                    }, 3000);
+                    showMessage(`The winner is: ${winner}! Your win has been logged!`, 'success');
+                    
+                    // Save the winner to the database
+                    saveWinner(winner);
+                }
+            }
+
+            animateSpin();
+        }
+
+        // --- Event Listeners ---
+
+        addItemButton.addEventListener('click', addNewItem);
+        spinButton.addEventListener('click', spinWheel);
+        themeSelector.addEventListener('change', (e) => switchTheme(e.target.value));
+        loadListButton.addEventListener('click', loadItemsFromText);
+
+        // --- Initial Setup on Load ---
+
+        function resizeCanvas() {
+            canvas.width = 500; 
+            canvas.height = 500;
+            drawWheel();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Initial setup
+        initFirebase(); // Start Firebase connection and data loading
+        switchTheme('carnival'); // Apply default theme
+        resizeCanvas();
+
+    </script>
+</body>
+</html>
